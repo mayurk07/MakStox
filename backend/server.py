@@ -1625,10 +1625,12 @@ def get_nifty50_data() -> Dict:
     
     try:
         nifty = yf.Ticker("^NSEI")
-        hist = nifty.history(period="5d", interval="15m")
         
-        # If no data available, try to get from MongoDB (last available session)
-        if hist.empty:
+        # Get daily data first (for prices and pivot)
+        daily = nifty.history(period="5d", interval="1d")
+        
+        # If no daily data available, try to get from MongoDB (last available session)
+        if daily.empty:
             logger.warning("No fresh NIFTY50 data available, trying MongoDB cache")
             cached = get_from_mongo(stock_lists_collection, {'list_type': 'nifty50_index'}, None)
             if cached:
@@ -1637,14 +1639,19 @@ def get_nifty50_data() -> Dict:
             logger.warning("No cached NIFTY50 data found")
             return {}
         
-        current = float(hist["Close"].iloc[-1])
+        # Get 15-min data (still needed for blocks calculation)
+        hist = nifty.history(period="5d", interval="15m")
         
-        daily = nifty.history(period="5d", interval="1d")
+        # Current price = last DAILY close
+        current = float(daily["Close"].iloc[-1])
+        
+        # Previous close = second-last DAILY close
         prev_close = float(daily["Close"].iloc[-2]) if len(daily) > 1 else current
         change_pct = round((current - prev_close) / prev_close * 100, 2)
         
-        last_closed = hist.iloc[-2] if len(hist) > 1 else hist.iloc[-1]
-        pivot = round((float(last_closed["High"]) + float(last_closed["Low"]) + float(last_closed["Close"])) / 3, 2)
+        # Pivot calculation using last DAILY candle
+        last_daily = daily.iloc[-1]
+        pivot = round((float(last_daily["High"]) + float(last_daily["Low"]) + float(last_daily["Close"])) / 3, 2)
         
         candles = []
         for idx, row in hist.iterrows():
