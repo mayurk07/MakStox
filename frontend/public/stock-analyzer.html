@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NIFTY 500 Stock Analyzer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .subtitle {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .controls {
+            padding: 30px;
+            background: #f8f9fa;
+            border-bottom: 2px solid #e9ecef;
+        }
+
+        .control-row {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        label {
+            font-weight: 600;
+            font-size: 0.9em;
+            color: #495057;
+        }
+
+        select, input, button {
+            padding: 10px 15px;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: all 0.2s;
+        }
+
+        select:focus, input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            padding: 12px 24px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 60px;
+            font-size: 1.2em;
+            color: #667eea;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 20px;
+            margin: 20px 30px;
+            border-radius: 8px;
+            border-left: 4px solid #dc3545;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            padding: 30px;
+            background: #f8f9fa;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 0.9em;
+            color: #6c757d;
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            font-size: 2em;
+            font-weight: 700;
+            color: #667eea;
+        }
+
+        .table-container {
+            overflow-x: auto;
+            padding: 0 30px 30px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+        }
+
+        thead {
+            background: #667eea;
+            color: white;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        th {
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        th:hover {
+            background: #5568d3;
+        }
+
+        th.sortable::after {
+            content: ' ↕';
+            opacity: 0.5;
+        }
+
+        th.sorted-asc::after {
+            content: ' ↑';
+            opacity: 1;
+        }
+
+        th.sorted-desc::after {
+            content: ' ↓';
+            opacity: 1;
+        }
+
+        td {
+            padding: 15px;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        tr:hover {
+            background: #f8f9fa;
+        }
+
+        .positive {
+            color: #28a745;
+            font-weight: 600;
+        }
+
+        .negative {
+            color: #dc3545;
+            font-weight: 600;
+        }
+
+        .score {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.9em;
+        }
+
+        .score-high {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .score-medium {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .score-low {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.8em;
+            }
+
+            .control-row {
+                flex-direction: column;
+            }
+
+            .control-group {
+                width: 100%;
+            }
+
+            select, input, button {
+                width: 100%;
+            }
+
+            table {
+                font-size: 0.9em;
+            }
+
+            th, td {
+                padding: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📈 NIFTY 500 Stock Analyzer</h1>
+            <p class="subtitle">Real-time Indian Stock Market Analysis</p>
+        </header>
+
+        <div class="controls">
+            <div class="control-row">
+                <div class="control-group">
+                    <label for="timeframe">Timeframe</label>
+                    <select id="timeframe">
+                        <option value="15min">15 Minutes</option>
+                        <option value="hourly">1 Hour</option>
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="monthly">Monthly</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label for="sortBy">Sort By</label>
+                    <select id="sortBy">
+                        <option value="score">Score (High to Low)</option>
+                        <option value="change">% Change</option>
+                        <option value="volume">Volume</option>
+                        <option value="symbol">Symbol (A-Z)</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label for="minScore">Min Score</label>
+                    <input type="number" id="minScore" min="0" max="100" value="0" placeholder="0-100">
+                </div>
+
+                <div class="control-group">
+                    <label for="searchSymbol">Search Symbol</label>
+                    <input type="text" id="searchSymbol" placeholder="e.g., RELIANCE">
+                </div>
+
+                <div class="control-group">
+                    <label>&nbsp;</label>
+                    <button id="fetchBtn" onclick="fetchStocks()">🔄 Refresh Data</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="stats" class="stats" style="display: none;"></div>
+
+        <div id="loading" class="loading" style="display: none;">
+            <div class="spinner"></div>
+            <p>Loading stock data...</p>
+        </div>
+
+        <div id="error" class="error" style="display: none;"></div>
+
+        <div class="table-container">
+            <table id="stockTable">
+                <thead>
+                    <tr>
+                        <th class="sortable" onclick="sortTable('symbol')">Symbol</th>
+                        <th class="sortable" onclick="sortTable('company')">Company</th>
+                        <th class="sortable" onclick="sortTable('sector')">Sector</th>
+                        <th class="sortable" onclick="sortTable('industry')">Industry</th>
+                        <th class="sortable" onclick="sortTable('price')">Price (₹)</th>
+                        <th class="sortable" onclick="sortTable('change')">Change %</th>
+                        <th class="sortable" onclick="sortTable('volume')">Volume</th>
+                        <th class="sortable" onclick="sortTable('score')">Score</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    <tr>
+                        <td colspan="8" style="text-align: center; padding: 60px; color: #6c757d;">
+                            Click "Refresh Data" to load stocks
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        let stocks = [];
+        let currentSort = { column: 'score', direction: 'desc' };
+        const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : 'http://localhost:8000';
+
+        async function fetchStocks() {
+            const timeframe = document.getElementById('timeframe').value;
+            const fetchBtn = document.getElementById('fetchBtn');
+            const loading = document.getElementById('loading');
+            const error = document.getElementById('error');
+            const statsDiv = document.getElementById('stats');
+
+            fetchBtn.disabled = true;
+            loading.style.display = 'block';
+            error.style.display = 'none';
+            statsDiv.style.display = 'none';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/stocks?timeframe=${timeframe}`);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                stocks = data.stocks || [];
+
+                displayStats(data);
+                filterAndDisplay();
+
+            } catch (err) {
+                error.textContent = `Error loading data: ${err.message}. Make sure the backend is running on port 8000.`;
+                error.style.display = 'block';
+                console.error('Fetch error:', err);
+            } finally {
+                loading.style.display = 'none';
+                fetchBtn.disabled = false;
+            }
+        }
+
+        function displayStats(data) {
+            const statsDiv = document.getElementById('stats');
+            statsDiv.style.display = 'grid';
+
+            const totalStocks = data.stocks?.length || 0;
+            const highScoreStocks = data.stocks?.filter(s => s.score >= 70).length || 0;
+            const avgVolume = data.stocks?.length > 0
+                ? (data.stocks.reduce((sum, s) => sum + (s.volume || 0), 0) / totalStocks).toFixed(0)
+                : 0;
+
+            statsDiv.innerHTML = `
+                <div class="stat-card">
+                    <div class="stat-label">Total Stocks</div>
+                    <div class="stat-value">${totalStocks}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">High Score (≥70)</div>
+                    <div class="stat-value">${highScoreStocks}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Avg Volume</div>
+                    <div class="stat-value">${parseInt(avgVolume).toLocaleString()}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Last Updated</div>
+                    <div class="stat-value" style="font-size: 1.2em;">${new Date().toLocaleTimeString()}</div>
+                </div>
+            `;
+        }
+
+        function filterAndDisplay() {
+            const minScore = parseFloat(document.getElementById('minScore').value) || 0;
+            const searchTerm = document.getElementById('searchSymbol').value.toUpperCase().trim();
+
+            let filtered = stocks.filter(stock => {
+                const matchesScore = stock.score >= minScore;
+                const matchesSearch = !searchTerm || stock.symbol.toUpperCase().includes(searchTerm);
+                return matchesScore && matchesSearch;
+            });
+
+            filtered.sort((a, b) => {
+                const aVal = a[currentSort.column];
+                const bVal = b[currentSort.column];
+
+                if (typeof aVal === 'string') {
+                    return currentSort.direction === 'asc'
+                        ? aVal.localeCompare(bVal)
+                        : bVal.localeCompare(aVal);
+                }
+
+                return currentSort.direction === 'asc'
+                    ? aVal - bVal
+                    : bVal - aVal;
+            });
+
+            displayTable(filtered);
+        }
+
+        function displayTable(stockList) {
+            const tbody = document.getElementById('tableBody');
+
+            if (stockList.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="8" style="text-align: center; padding: 40px; color: #6c757d;">
+                            No stocks match your filters
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = stockList.map(stock => {
+                const changeClass = stock.change >= 0 ? 'positive' : 'negative';
+                const changeSymbol = stock.change >= 0 ? '+' : '';
+
+                let scoreClass = 'score-low';
+                if (stock.score >= 70) scoreClass = 'score-high';
+                else if (stock.score >= 40) scoreClass = 'score-medium';
+
+                return `
+                    <tr>
+                        <td><strong>${stock.symbol}</strong></td>
+                        <td>${stock.company_name || 'N/A'}</td>
+                        <td>${stock.sector || 'N/A'}</td>
+                        <td>${stock.industry || 'N/A'}</td>
+                        <td>₹${stock.price?.toFixed(2) || 'N/A'}</td>
+                        <td class="${changeClass}">${changeSymbol}${stock.change?.toFixed(2) || 0}%</td>
+                        <td>${(stock.volume || 0).toLocaleString()}</td>
+                        <td><span class="score ${scoreClass}">${stock.score}</span></td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function sortTable(column) {
+            if (currentSort.column === column) {
+                currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSort.column = column;
+                currentSort.direction = column === 'symbol' ? 'asc' : 'desc';
+            }
+
+            document.querySelectorAll('th').forEach(th => {
+                th.classList.remove('sorted-asc', 'sorted-desc');
+            });
+
+            const header = event.target;
+            header.classList.add(`sorted-${currentSort.direction}`);
+
+            filterAndDisplay();
+        }
+
+        document.getElementById('timeframe').addEventListener('change', fetchStocks);
+        document.getElementById('sortBy').addEventListener('change', (e) => {
+            const value = e.target.value;
+            if (value === 'score') {
+                currentSort = { column: 'score', direction: 'desc' };
+            } else if (value === 'change') {
+                currentSort = { column: 'change', direction: 'desc' };
+            } else if (value === 'volume') {
+                currentSort = { column: 'volume', direction: 'desc' };
+            } else if (value === 'symbol') {
+                currentSort = { column: 'symbol', direction: 'asc' };
+            }
+            filterAndDisplay();
+        });
+
+        document.getElementById('minScore').addEventListener('input', filterAndDisplay);
+        document.getElementById('searchSymbol').addEventListener('input', filterAndDisplay);
+
+        fetchStocks();
+    </script>
+</body>
+</html>
