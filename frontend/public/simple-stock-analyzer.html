@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Trend Analyzer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        header {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            color: #1a202c;
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            color: #718096;
+            font-size: 14px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .stat-label {
+            color: #718096;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            color: #1a202c;
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .controls {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .controls-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .control-group {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        label {
+            display: block;
+            color: #4a5568;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 6px;
+        }
+
+        select, input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+
+        select:focus, input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #5568d3;
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        .refresh-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 48px;
+            height: 24px;
+            background: #cbd5e0;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .toggle-switch.active {
+            background: #667eea;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.2s;
+        }
+
+        .toggle-switch.active .toggle-slider {
+            transform: translateX(24px);
+        }
+
+        .table-container {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            background: #f7fafc;
+            color: #4a5568;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            padding: 12px;
+            text-align: left;
+            border-bottom: 2px solid #e2e8f0;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        th:hover {
+            background: #edf2f7;
+        }
+
+        th.sortable::after {
+            content: ' ⇅';
+            color: #cbd5e0;
+        }
+
+        th.sort-asc::after {
+            content: ' ↑';
+            color: #667eea;
+        }
+
+        th.sort-desc::after {
+            content: ' ↓';
+            color: #667eea;
+        }
+
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #e2e8f0;
+            font-size: 14px;
+        }
+
+        tr:hover {
+            background: #f7fafc;
+        }
+
+        .score-high {
+            color: #38a169;
+            font-weight: 600;
+        }
+
+        .score-medium {
+            color: #d69e2e;
+            font-weight: 600;
+        }
+
+        .score-low {
+            color: #e53e3e;
+            font-weight: 600;
+        }
+
+        .change-positive {
+            color: #38a169;
+        }
+
+        .change-negative {
+            color: #e53e3e;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #718096;
+        }
+
+        .error {
+            background: #fed7d7;
+            color: #c53030;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .last-update {
+            text-align: center;
+            color: #718096;
+            font-size: 12px;
+            margin-top: 16px;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+
+            h1 {
+                font-size: 22px;
+            }
+
+            .controls-row {
+                flex-direction: column;
+            }
+
+            .control-group {
+                min-width: 100%;
+            }
+
+            table {
+                font-size: 12px;
+            }
+
+            th, td {
+                padding: 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📈 Stock Trend Analyzer</h1>
+            <p class="subtitle">Real-time stock analysis across multiple timeframes</p>
+        </header>
+
+        <div id="error-message" class="error" style="display: none;"></div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Total Stocks</div>
+                <div class="stat-value" id="stat-total">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">High Score Count (≥8)</div>
+                <div class="stat-value" id="stat-high">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Average Volume</div>
+                <div class="stat-value" id="stat-volume">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Last Update</div>
+                <div class="stat-value" id="stat-update" style="font-size: 16px;">-</div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div class="controls-row">
+                <div class="control-group">
+                    <label for="timeframe">Timeframe</label>
+                    <select id="timeframe">
+                        <option value="15min">15 Minutes</option>
+                        <option value="hourly">Hourly</option>
+                        <option value="daily" selected>Daily</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="monthly">Monthly</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label for="sort-by">Sort By</label>
+                    <select id="sort-by">
+                        <option value="score">Score</option>
+                        <option value="change">Change %</option>
+                        <option value="volume">Volume</option>
+                        <option value="symbol">Symbol</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label for="min-score">Minimum Score</label>
+                    <input type="number" id="min-score" value="0" min="0" max="12" step="1">
+                </div>
+
+                <div class="control-group">
+                    <label for="search">Search Symbol</label>
+                    <input type="text" id="search" placeholder="e.g., RELIANCE">
+                </div>
+            </div>
+
+            <div class="controls-row">
+                <button onclick="refreshData()">🔄 Refresh Now</button>
+                <div class="refresh-toggle">
+                    <span style="font-size: 14px; color: #4a5568;">Auto-refresh (60s)</span>
+                    <div class="toggle-switch active" id="auto-refresh-toggle" onclick="toggleAutoRefresh()">
+                        <div class="toggle-slider"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-container">
+            <div id="loading" class="loading">Loading data...</div>
+            <table id="data-table" style="display: none;">
+                <thead>
+                    <tr>
+                        <th class="sortable" onclick="sortTable('symbol')">Symbol</th>
+                        <th class="sortable" onclick="sortTable('score')">Score</th>
+                        <th class="sortable" onclick="sortTable('change')">Change %</th>
+                        <th class="sortable" onclick="sortTable('volume')">Volume</th>
+                        <th class="sortable" onclick="sortTable('price')">Price</th>
+                    </tr>
+                </thead>
+                <tbody id="table-body"></tbody>
+            </table>
+            <div class="last-update" id="last-update"></div>
+        </div>
+    </div>
+
+    <script>
+        let stockData = [];
+        let currentSort = { column: 'score', direction: 'desc' };
+        let autoRefreshEnabled = true;
+        let autoRefreshTimer = null;
+        const API_BASE = 'http://localhost:8000';
+
+        async function fetchData() {
+            const timeframe = document.getElementById('timeframe').value;
+
+            try {
+                showLoading(true);
+                const response = await fetch(`${API_BASE}/api/trends/${timeframe}`);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                stockData = data.stocks || [];
+
+                hideError();
+                updateStats(data.stats);
+                applyFilters();
+                updateLastUpdate();
+                showLoading(false);
+
+            } catch (error) {
+                console.error('Fetch error:', error);
+                showError(`Failed to fetch data: ${error.message}`);
+                showLoading(false);
+            }
+        }
+
+        function showLoading(show) {
+            document.getElementById('loading').style.display = show ? 'block' : 'none';
+            document.getElementById('data-table').style.display = show ? 'none' : 'table';
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('error-message');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+        }
+
+        function hideError() {
+            document.getElementById('error-message').style.display = 'none';
+        }
+
+        function updateStats(stats) {
+            if (!stats) return;
+
+            document.getElementById('stat-total').textContent = stats.total_stocks || 0;
+            document.getElementById('stat-high').textContent = stats.high_score_count || 0;
+
+            const avgVolume = stats.average_volume || 0;
+            document.getElementById('stat-volume').textContent = formatVolume(avgVolume);
+
+            document.getElementById('stat-update').textContent = stats.last_update || 'N/A';
+        }
+
+        function applyFilters() {
+            const minScore = parseFloat(document.getElementById('min-score').value) || 0;
+            const searchTerm = document.getElementById('search').value.trim().toUpperCase();
+
+            let filtered = stockData.filter(stock => {
+                const scoreMatch = stock.score >= minScore;
+                const searchMatch = !searchTerm || stock.symbol.toUpperCase().includes(searchTerm);
+                return scoreMatch && searchMatch;
+            });
+
+            sortData(filtered);
+            renderTable(filtered);
+        }
+
+        function sortData(data) {
+            const { column, direction } = currentSort;
+
+            data.sort((a, b) => {
+                let aVal = a[column];
+                let bVal = b[column];
+
+                if (column === 'symbol') {
+                    aVal = aVal || '';
+                    bVal = bVal || '';
+                    return direction === 'asc'
+                        ? aVal.localeCompare(bVal)
+                        : bVal.localeCompare(aVal);
+                }
+
+                aVal = parseFloat(aVal) || 0;
+                bVal = parseFloat(bVal) || 0;
+
+                return direction === 'asc' ? aVal - bVal : bVal - aVal;
+            });
+        }
+
+        function sortTable(column) {
+            if (currentSort.column === column) {
+                currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSort.column = column;
+                currentSort.direction = 'desc';
+            }
+
+            updateSortIndicators();
+            applyFilters();
+        }
+
+        function updateSortIndicators() {
+            document.querySelectorAll('th.sortable').forEach(th => {
+                th.classList.remove('sort-asc', 'sort-desc');
+            });
+
+            const headers = {
+                'symbol': 0,
+                'score': 1,
+                'change': 2,
+                'volume': 3,
+                'price': 4
+            };
+
+            const headerIndex = headers[currentSort.column];
+            if (headerIndex !== undefined) {
+                const th = document.querySelectorAll('th.sortable')[headerIndex];
+                th.classList.add(currentSort.direction === 'asc' ? 'sort-asc' : 'sort-desc');
+            }
+        }
+
+        function renderTable(data) {
+            const tbody = document.getElementById('table-body');
+
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #718096;">No stocks match your filters</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = data.map(stock => {
+                const scoreClass = stock.score >= 8 ? 'score-high' : stock.score >= 5 ? 'score-medium' : 'score-low';
+                const changeClass = stock.change >= 0 ? 'change-positive' : 'change-negative';
+                const changeSign = stock.change >= 0 ? '+' : '';
+
+                return `
+                    <tr>
+                        <td><strong>${stock.symbol}</strong></td>
+                        <td class="${scoreClass}">${stock.score.toFixed(1)}</td>
+                        <td class="${changeClass}">${changeSign}${stock.change.toFixed(2)}%</td>
+                        <td>${formatVolume(stock.volume)}</td>
+                        <td>₹${stock.price.toFixed(2)}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function formatVolume(volume) {
+            if (volume >= 10000000) {
+                return (volume / 10000000).toFixed(2) + 'Cr';
+            } else if (volume >= 100000) {
+                return (volume / 100000).toFixed(2) + 'L';
+            } else if (volume >= 1000) {
+                return (volume / 1000).toFixed(2) + 'K';
+            }
+            return volume.toFixed(0);
+        }
+
+        function updateLastUpdate() {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+            document.getElementById('last-update').textContent = `Last refreshed: ${timeStr}`;
+        }
+
+        function refreshData() {
+            fetchData();
+        }
+
+        function toggleAutoRefresh() {
+            autoRefreshEnabled = !autoRefreshEnabled;
+            const toggle = document.getElementById('auto-refresh-toggle');
+
+            if (autoRefreshEnabled) {
+                toggle.classList.add('active');
+                startAutoRefresh();
+            } else {
+                toggle.classList.remove('active');
+                stopAutoRefresh();
+            }
+        }
+
+        function startAutoRefresh() {
+            stopAutoRefresh();
+            autoRefreshTimer = setInterval(() => {
+                fetchData();
+            }, 60000);
+        }
+
+        function stopAutoRefresh() {
+            if (autoRefreshTimer) {
+                clearInterval(autoRefreshTimer);
+                autoRefreshTimer = null;
+            }
+        }
+
+        document.getElementById('timeframe').addEventListener('change', fetchData);
+        document.getElementById('sort-by').addEventListener('change', (e) => {
+            currentSort.column = e.target.value;
+            currentSort.direction = 'desc';
+            updateSortIndicators();
+            applyFilters();
+        });
+        document.getElementById('min-score').addEventListener('input', applyFilters);
+        document.getElementById('search').addEventListener('input', applyFilters);
+
+        fetchData();
+        startAutoRefresh();
+    </script>
+</body>
+</html>
