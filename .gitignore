@@ -79,3 +79,4 @@ agenthub/agents/youtube/db
 # Mobile development
 android-sdk/ UDTS15.zip
 UDTS15.zip
+.env
