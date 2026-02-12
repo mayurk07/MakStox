@@ -6,16 +6,16 @@ pandas==2.3.3
 numpy>=1.26.0
 yfinance==1.0
 beautifulsoup4==4.14.3
-pymongo==4.5.0
 pydantic>=2.6.4
 python-multipart>=0.0.9
 ta==0.11.0
+supabase>=2.0.0
+postgrest>=0.10.0
 distro==1.9.0
 dnspython==2.8.0
 ecdsa==0.19.1
 email-validator==2.3.0
 emergentintegrations==0.1.0
-fastapi==0.110.1
 fastuuid==0.14.0
 filelock==3.20.3
 flake8==7.3.0
@@ -79,7 +79,6 @@ pydantic_core==2.41.5
 pyflakes==3.4.0
 Pygments==2.19.2
 PyJWT==2.10.1
-pymongo==4.5.0
 pyparsing==3.3.1
 pytest==9.0.2
 python-dateutil==2.9.0.post0

@@ -81,14 +81,17 @@ See `ARCHITECTURE.md` for detailed technical documentation.
 See `IMPLEMENTATION_SUMMARY.md` for recent changes and implementation details.
 
 ## Technology
-- Backend: FastAPI (Python) with MongoDB caching & parallel processing
+- Backend: FastAPI (Python) with Supabase caching & parallel processing
 - Frontend: React with modern UI components
 - Data Source: Yahoo Finance (yfinance)
-- Database: MongoDB (local, free)
+- Database: Supabase PostgreSQL (cloud-based, free tier)
 
-## Deployment Notes
-- **Emergent**: Works with local MongoDB (free forever)
-- **Vercel/Production**: Use MongoDB Atlas free tier (no code changes needed)
+## Deployment
+- **Backend**: Render.com (Free tier - 750 hours/month)
+- **Frontend**: Vercel (Unlimited free for personal projects)
+- **Database**: Supabase PostgreSQL (Free tier - 500MB storage)
+
+For detailed deployment instructions, see [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md)
 
 ## What's New in v2.2 (December 30, 2025)
 - 🐛 **Fixed Column Filters**: Null/blank/"-" values now properly excluded when numeric filters applied

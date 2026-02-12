@@ -15,10 +15,23 @@ import requests
 from bs4 import BeautifulSoup
 import csv
 from io import StringIO
-from pymongo import MongoClient, ASCENDING
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import asyncio
 import ta  # Technical Analysis library
+from database import (
+    init_supabase,
+    SUPABASE_AVAILABLE,
+    get_ohlc_cache,
+    save_ohlc_cache,
+    get_fundamentals_cache,
+    save_fundamentals_cache,
+    get_institutional_cache,
+    save_institutional_cache,
+    get_stock_list,
+    save_stock_list,
+    clear_all_caches,
+    get_ist_now as db_get_ist_now
+)
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -29,33 +42,8 @@ api_router = APIRouter(prefix="/api")
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# MongoDB connection
-MONGO_URL = os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
-DB_NAME = os.environ.get('DB_NAME', 'test_database')
-
-try:
-    mongo_client = MongoClient(MONGO_URL, serverSelectionTimeoutMS=5000)
-    db = mongo_client[DB_NAME]
-    
-    # Collections for caching
-    ohlc_collection = db['ohlc_cache']
-    fundamentals_collection = db['fundamentals_cache']
-    institutional_collection = db['institutional_cache']
-    stock_lists_collection = db['stock_lists']
-    
-    # Create indexes for faster lookups
-    ohlc_collection.create_index([('symbol', ASCENDING), ('timeframe', ASCENDING)])
-    fundamentals_collection.create_index([('symbol', ASCENDING)])
-    institutional_collection.create_index([('symbol', ASCENDING)])
-    stock_lists_collection.create_index([('list_type', ASCENDING)])
-    
-    logger.info("MongoDB connected successfully")
-    MONGODB_AVAILABLE = True
-except Exception as e:
-    logger.warning(f"MongoDB not available, using in-memory cache only: {e}")
-    MONGODB_AVAILABLE = False
-    mongo_client = None
-    db = None
+# Initialize Supabase database
+init_supabase()
 
 # In-memory cache (fallback)
 cache = {
@@ -240,35 +228,7 @@ def is_valid_symbol(symbol: str) -> bool:
     
     return True
 
-# MongoDB helper functions
-def get_from_mongo(collection, query, max_age_minutes=None):
-    """Get cached data from MongoDB"""
-    if not MONGODB_AVAILABLE:
-        return None
-    
-    try:
-        doc = collection.find_one(query)
-        if doc:
-            if max_age_minutes:
-                timestamp = doc.get('timestamp')
-                if timestamp and is_cache_valid(timestamp, max_age_minutes):
-                    return doc.get('data')
-                return None
-            return doc.get('data')
-    except Exception as e:
-        logger.warning(f"MongoDB read error: {e}")
-    return None
-
-def save_to_mongo(collection, query, data):
-    """Save data to MongoDB cache"""
-    if not MONGODB_AVAILABLE:
-        return
-    
-    try:
-        doc = {**query, 'data': data, 'timestamp': get_ist_now()}
-        collection.update_one(query, {'$set': doc}, upsert=True)
-    except Exception as e:
-        logger.warning(f"MongoDB write error: {e}")
+# Database helper functions are now in database.py module
 
 def fetch_nifty50_from_csv():
     """Fetch NIFTY 50 list from NSE CSV"""
@@ -371,68 +331,68 @@ def fetch_nifty500_from_nse():
 
 def get_nifty50_symbols():
     """Fetch NIFTY 50 constituents with fallback"""
-    # Check MongoDB first
-    cached = get_from_mongo(stock_lists_collection, {'list_type': 'nifty50'}, 1440)
+    # Check Supabase first
+    cached = get_stock_list('nifty50', 1440)
     if cached:
-        logger.info("Using NIFTY 50 from MongoDB cache")
+        logger.info("Using NIFTY 50 from Supabase cache")
         return cached
-    
+
     # Check in-memory cache
     with cache_lock:
         if is_cache_valid(cache["nifty50_list"]["timestamp"], 1440):
             return cache["nifty50_list"]["data"]
-    
+
     # Try NSE CSV first
     symbols = fetch_nifty50_from_csv()
     if symbols and len(symbols) == 50:
-        save_to_mongo(stock_lists_collection, {'list_type': 'nifty50'}, symbols)
+        save_stock_list('nifty50', symbols)
         with cache_lock:
             cache["nifty50_list"] = {"data": symbols, "timestamp": get_ist_now()}
         logger.info("Using NIFTY 50 from NSE CSV")
         return symbols
-    
+
     # Fallback to hardcoded list
     logger.info("Using NIFTY 50 fallback list")
-    save_to_mongo(stock_lists_collection, {'list_type': 'nifty50'}, NIFTY50_SYMBOLS)
+    save_stock_list('nifty50', NIFTY50_SYMBOLS)
     with cache_lock:
         cache["nifty50_list"] = {"data": NIFTY50_SYMBOLS, "timestamp": get_ist_now()}
     return NIFTY50_SYMBOLS
 
 def get_nifty500_symbols():
     """Fetch NIFTY 500 constituents with fallback"""
-    # Check MongoDB first
-    cached = get_from_mongo(stock_lists_collection, {'list_type': 'nifty500'}, 1440)
+    # Check Supabase first
+    cached = get_stock_list('nifty500', 1440)
     if cached:
-        logger.info("Using NIFTY 500 from MongoDB cache")
+        logger.info("Using NIFTY 500 from Supabase cache")
         return cached
-    
+
     # Check in-memory cache
     with cache_lock:
         if is_cache_valid(cache["nifty500_list"]["timestamp"], 1440):
             return cache["nifty500_list"]["data"]
-    
+
     # Try NSE CSV first
     symbols = fetch_nifty500_from_csv()
     if symbols and len(symbols) == 500:
-        save_to_mongo(stock_lists_collection, {'list_type': 'nifty500'}, symbols)
+        save_stock_list('nifty500', symbols)
         with cache_lock:
             cache["nifty500_list"] = {"data": symbols, "timestamp": get_ist_now()}
         logger.info("Using NIFTY 500 from NSE CSV")
         return symbols
-    
+
     # Try NSE API as secondary option
     symbols = fetch_nifty500_from_nse()
     if symbols:
         symbols = [s for s in symbols if not is_nifty_index(s) and is_valid_symbol(s)]
-        save_to_mongo(stock_lists_collection, {'list_type': 'nifty500'}, symbols)
+        save_stock_list('nifty500', symbols)
         with cache_lock:
             cache["nifty500_list"] = {"data": symbols, "timestamp": get_ist_now()}
         logger.info("Using NIFTY 500 from NSE API")
         return symbols
-    
+
     # Fallback to hardcoded list
     logger.info("Using NIFTY 500 fallback list")
-    save_to_mongo(stock_lists_collection, {'list_type': 'nifty500'}, NIFTY500_FALLBACK)
+    save_stock_list('nifty500', NIFTY500_FALLBACK)
     with cache_lock:
         cache["nifty500_list"] = {"data": NIFTY500_FALLBACK, "timestamp": get_ist_now()}
     return NIFTY500_FALLBACK
@@ -441,27 +401,27 @@ def get_yf_symbol(symbol):
     return f"{symbol}.NS"
 
 def get_ohlc_data(symbol: str, timeframe: str, retry_count: int = 0, max_retries: int = 5):
-    """Fetch OHLC data with MongoDB and in-memory caching, with retry logic for rate limits"""
+    """Fetch OHLC data with Supabase and in-memory caching, with retry logic for rate limits"""
     cache_key = f"{symbol}_{timeframe}"
-    
-    # Check MongoDB first with extended validity during rate limit periods
+
+    # Check Supabase first with extended validity during rate limit periods
     # Check for recent cache first (15 min), then try older cache (24 hours) as fallback
-    cached = get_from_mongo(ohlc_collection, {'symbol': symbol, 'timeframe': timeframe}, 15)
+    cached = get_ohlc_cache(symbol, timeframe, 15)
     if cached:
         return cached
-    
+
     # Try older cache (24 hours) as fallback for rate limit scenarios
-    cached_old = get_from_mongo(ohlc_collection, {'symbol': symbol, 'timeframe': timeframe}, 1440)
-    
+    cached_old = get_ohlc_cache(symbol, timeframe, 1440)
+
     # Check in-memory cache
     with cache_lock:
         if cache_key in cache["ohlc"] and is_cache_valid(cache["ohlc"][cache_key]["timestamp"], 15):
             return cache["ohlc"][cache_key]["data"]
-    
+
     try:
         yf_symbol = get_yf_symbol(symbol)
         ticker = yf.Ticker(yf_symbol)
-        
+
         if timeframe == "monthly":
             df = ticker.history(period="3y", interval="1mo")
         elif timeframe == "weekly":
@@ -474,14 +434,14 @@ def get_ohlc_data(symbol: str, timeframe: str, retry_count: int = 0, max_retries
             df = ticker.history(period="5d", interval="15m")
         else:
             return []
-        
+
         if df.empty:
             # If fetch failed but we have old cache, use it
             if cached_old:
                 logger.info(f"Using stale cache for {symbol} {timeframe} due to empty response")
                 return cached_old
             return []
-        
+
         candles = []
         for idx, row in df.iterrows():
             candles.append({
@@ -491,12 +451,12 @@ def get_ohlc_data(symbol: str, timeframe: str, retry_count: int = 0, max_retries
                 "high": round(float(row["High"]), 2),
                 "low": round(float(row["Low"]), 2)
             })
-        
-        # Save to both MongoDB and in-memory cache
-        save_to_mongo(ohlc_collection, {'symbol': symbol, 'timeframe': timeframe}, candles)
+
+        # Save to both Supabase and in-memory cache
+        save_ohlc_cache(symbol, timeframe, candles)
         with cache_lock:
             cache["ohlc"][cache_key] = {"data": candles, "timestamp": get_ist_now()}
-        
+
         return candles
     except Exception as e:
         error_msg = str(e)
@@ -912,44 +872,44 @@ def get_biggest_trend(blocks: List[Dict]) -> Optional[Dict]:
 
 def get_institutional_holding_percentage(symbol: str) -> str:
     """Get absolute % of shares held by institutional investors"""
-    # Check MongoDB first
-    cached = get_from_mongo(institutional_collection, {'symbol': symbol}, 129600)
+    # Check Supabase first
+    cached = get_institutional_cache(symbol, 129600)
     if cached:
         return cached
-    
+
     # Check in-memory cache
     with cache_lock:
         if symbol in cache["institutional_holdings"] and is_cache_valid(
             cache["institutional_holdings"][symbol]["timestamp"], 129600
         ):
             return cache["institutional_holdings"][symbol]["data"]
-    
+
     try:
         ticker = yf.Ticker(get_yf_symbol(symbol))
-        
+
         try:
             info = ticker.info
             held_pct = info.get('heldPercentInstitutions', None)
-            
+
             if held_pct is not None:
                 pct_value = held_pct * 100
                 result = f"{pct_value:.2f}"
-                
-                save_to_mongo(institutional_collection, {'symbol': symbol}, result)
+
+                save_institutional_cache(symbol, result)
                 with cache_lock:
                     cache["institutional_holdings"][symbol] = {
                         "data": result,
                         "timestamp": get_ist_now()
                     }
-                
+
                 logger.info(f"{symbol}: Institutional holding = {result}% (Method 1)")
                 return result
         except Exception as e:
             logger.warning(f"{symbol}: Could not use info['heldPercentInstitutions']: {e}")
-        
+
         try:
             major_holders = ticker.major_holders
-            
+
             if major_holders is not None and not major_holders.empty:
                 for idx, row in major_holders.iterrows():
                     desc = str(row[1]) if len(row) > 1 else ""
@@ -958,71 +918,71 @@ def get_institutional_holding_percentage(symbol: str) -> str:
                         try:
                             pct_value = float(pct_str)
                             result = f"{pct_value:.2f}"
-                            
-                            save_to_mongo(institutional_collection, {'symbol': symbol}, result)
+
+                            save_institutional_cache(symbol, result)
                             with cache_lock:
                                 cache["institutional_holdings"][symbol] = {
                                     "data": result,
                                     "timestamp": get_ist_now()
                                 }
-                            
+
                             logger.info(f"{symbol}: Institutional holding = {result}% (Method 2)")
                             return result
                         except ValueError:
                             pass
         except Exception as e:
             logger.warning(f"{symbol}: Could not use major_holders: {e}")
-        
+
         result = "NA"
-        save_to_mongo(institutional_collection, {'symbol': symbol}, result)
+        save_institutional_cache(symbol, result)
         with cache_lock:
             cache["institutional_holdings"][symbol] = {
                 "data": result,
                 "timestamp": get_ist_now()
             }
-        
+
         logger.info(f"{symbol}: Institutional holdings data not available")
         return result
-        
+
     except Exception as e:
         logger.error(f"{symbol}: Error fetching institutional holding: {e}")
         result = "NA"
-        
-        save_to_mongo(institutional_collection, {'symbol': symbol}, result)
+
+        save_institutional_cache(symbol, result)
         with cache_lock:
             cache["institutional_holdings"][symbol] = {
                 "data": result,
                 "timestamp": get_ist_now()
             }
-        
+
         return result
 
 def get_fundamentals(symbol: str, retry_count: int = 0, max_retries: int = 5) -> Dict:
-    """Fetch fundamental data with MongoDB and in-memory caching, with retry logic for rate limits"""
-    # Check MongoDB first (24 hours validity)
-    cached = get_from_mongo(fundamentals_collection, {'symbol': symbol}, 1440)
+    """Fetch fundamental data with Supabase and in-memory caching, with retry logic for rate limits"""
+    # Check Supabase first (24 hours validity)
+    cached = get_fundamentals_cache(symbol, 1440)
     if cached:
         return cached
-    
+
     # Try older cache (7 days) as fallback
-    cached_old = get_from_mongo(fundamentals_collection, {'symbol': symbol}, 10080)
-    
+    cached_old = get_fundamentals_cache(symbol, 10080)
+
     # Check in-memory cache
     with cache_lock:
         if symbol in cache["fundamentals"] and is_cache_valid(cache["fundamentals"][symbol]["timestamp"], 1440):
             return cache["fundamentals"][symbol]["data"]
-    
+
     try:
         ticker = yf.Ticker(get_yf_symbol(symbol))
         info = ticker.info
-        
+
         sector = info.get("sector", None)
         industry = info.get("industry", None)
         inst_holding_pct = get_institutional_holding_percentage(symbol)
-        
+
         # Get analyst count
         analyst_count = info.get("numberOfAnalystOpinions", None)
-        
+
         fundamentals = {
             "sector": sector,
             "industry": industry,
@@ -1040,7 +1000,7 @@ def get_fundamentals(symbol: str, retry_count: int = 0, max_retries: int = 5) ->
             "enterprise_to_ebitda": info.get("enterpriseToEbitda", None),
             "enterprise_to_revenue": info.get("enterpriseToRevenue", None)
         }
-        
+
         if fundamentals["roe"] is not None:
             fundamentals["roe"] = round(fundamentals["roe"] * 100, 0)
         if fundamentals["revenue_growth"] is not None:
@@ -1053,7 +1013,7 @@ def get_fundamentals(symbol: str, retry_count: int = 0, max_retries: int = 5) ->
             fundamentals["pb"] = round(fundamentals["pb"], 1)
         if fundamentals["de"] is not None:
             fundamentals["de"] = round(fundamentals["de"], 0)
-        
+
         # Format new fields
         if fundamentals["dividend_yield"] is not None:
             fundamentals["dividend_yield"] = round(fundamentals["dividend_yield"] * 100, 2)
@@ -1064,17 +1024,17 @@ def get_fundamentals(symbol: str, retry_count: int = 0, max_retries: int = 5) ->
             fundamentals["enterprise_to_ebitda"] = round(fundamentals["enterprise_to_ebitda"], 2)
         if fundamentals["enterprise_to_revenue"] is not None:
             fundamentals["enterprise_to_revenue"] = round(fundamentals["enterprise_to_revenue"], 2)
-        
+
         market_cap = info.get("marketCap", None)
         if market_cap is not None:
             fundamentals["market_cap_tkc"] = round(market_cap / 1e10, 0)
         else:
             fundamentals["market_cap_tkc"] = None
-        
-        save_to_mongo(fundamentals_collection, {'symbol': symbol}, fundamentals)
+
+        save_fundamentals_cache(symbol, fundamentals)
         with cache_lock:
             cache["fundamentals"][symbol] = {"data": fundamentals, "timestamp": get_ist_now()}
-        
+
         return fundamentals
     except Exception as e:
         error_msg = str(e)
@@ -1629,12 +1589,12 @@ def get_nifty50_data() -> Dict:
         # Get daily data first (for prices and pivot)
         daily = nifty.history(period="5d", interval="1d")
         
-        # If no daily data available, try to get from MongoDB (last available session)
+        # If no daily data available, try to get from Supabase (last available session)
         if daily.empty:
-            logger.warning("No fresh NIFTY50 data available, trying MongoDB cache")
-            cached = get_from_mongo(stock_lists_collection, {'list_type': 'nifty50_index'}, None)
+            logger.warning("No fresh NIFTY50 data available, trying Supabase cache")
+            cached = get_stock_list('nifty50_index', None)
             if cached:
-                logger.info("Using last available NIFTY50 data from MongoDB")
+                logger.info("Using last available NIFTY50 data from Supabase")
                 return cached
             logger.warning("No cached NIFTY50 data found")
             return {}
@@ -1687,20 +1647,20 @@ def get_nifty50_data() -> Dict:
             "decline": declines
         }
         
-        # Save to both in-memory cache and MongoDB for fallback
+        # Save to both in-memory cache and Supabase for fallback
         with cache_lock:
             cache["nifty50"] = {"data": result, "timestamp": get_ist_now()}
-        
-        # Save to MongoDB as last valid data (no expiry for fallback)
-        save_to_mongo(stock_lists_collection, {'list_type': 'nifty50_index'}, result)
-        
+
+        # Save to Supabase as last valid data (no expiry for fallback)
+        save_stock_list('nifty50_index', result)
+
         return result
     except Exception as e:
         logger.error(f"Error fetching NIFTY 50: {e}")
-        # Try MongoDB fallback on error
-        cached = get_from_mongo(stock_lists_collection, {'list_type': 'nifty50_index'}, None)
+        # Try Supabase fallback on error
+        cached = get_stock_list('nifty50_index', None)
         if cached:
-            logger.info("Using last available NIFTY50 data from MongoDB (after error)")
+            logger.info("Using last available NIFTY50 data from Supabase (after error)")
             return cached
         return {}
 
@@ -1712,7 +1672,7 @@ async def root():
 @api_router.get("/health")
 async def api_health():
     """Health check endpoint for API router"""
-    return {"status": "healthy", "service": "UDTS Stock Analyzer API", "mongodb": "connected" if MONGODB_AVAILABLE else "unavailable", "timestamp": get_ist_now().isoformat()}
+    return {"status": "healthy", "service": "UDTS Stock Analyzer API", "database": "supabase", "db_status": "connected" if SUPABASE_AVAILABLE else "unavailable", "timestamp": get_ist_now().isoformat()}
 
 @api_router.get("/nifty50")
 async def get_nifty50():
@@ -1739,7 +1699,7 @@ async def get_all_stocks(response: Response):
     results = []
     
     logger.info(f"Starting BATCH PARALLEL analysis of {len(symbols)} stocks (20 stocks per batch)")
-    logger.info("Estimated time: 4-6 minutes with MongoDB cache, ensuring NO UNKNOWN values")
+    logger.info("Estimated time: 4-6 minutes with Supabase cache, ensuring NO UNKNOWN values")
     
     # Process stocks in BATCHES of 20 with parallel processing
     # Optimized batch size balances speed with rate limit avoidance and ensures complete data
@@ -2078,17 +2038,13 @@ async def refresh_data():
         cache["nifty50"] = {"data": None, "timestamp": None}
         cache["nifty50_list"] = {"data": None, "timestamp": None}
         cache["nifty500_list"] = {"data": None, "timestamp": None}
-    
-    # Clear MongoDB cache
-    if MONGODB_AVAILABLE:
-        try:
-            ohlc_collection.delete_many({})
-            fundamentals_collection.delete_many({})
-            institutional_collection.delete_many({})
-            logger.info("MongoDB caches cleared (OHLC, fundamentals, and institutional holdings)")
-        except Exception as e:
-            logger.warning(f"Error clearing MongoDB caches: {e}")
-    
+
+    # Clear Supabase cache
+    if clear_all_caches():
+        logger.info("Supabase caches cleared (OHLC, fundamentals, and institutional holdings)")
+    else:
+        logger.warning("Error clearing Supabase caches or Supabase not available")
+
     logger.info("All caches cleared - will fetch fresh data on next request")
     return {"message": "Cache cleared", "timestamp": get_ist_now().isoformat()}
 
@@ -2176,20 +2132,17 @@ async def refresh_stock_list():
                     cache["nifty50_list"] = {"data": None, "timestamp": None}
                     cache["nifty500_list"] = {"data": symbols, "timestamp": get_ist_now()}
                 
-                save_to_mongo(stock_lists_collection, {'list_type': 'nifty500'}, symbols)
-                
-                if MONGODB_AVAILABLE:
-                    try:
-                        ohlc_collection.delete_many({})
-                        fundamentals_collection.delete_many({})
-                        logger.info("MongoDB caches cleared due to list change")
-                    except Exception as e:
-                        logger.warning(f"Error clearing MongoDB: {e}")
+                save_stock_list('nifty500', symbols)
+
+                if clear_all_caches():
+                    logger.info("Supabase caches cleared due to list change")
+                else:
+                    logger.warning("Error clearing Supabase caches")
             else:
                 logger.info("Stock list unchanged - keeping existing caches")
                 with cache_lock:
                     cache["nifty500_list"] = {"data": symbols, "timestamp": get_ist_now()}
-                save_to_mongo(stock_lists_collection, {'list_type': 'nifty500'}, symbols)
+                save_stock_list('nifty500', symbols)
             
             return {
                 "success": True,
@@ -2222,11 +2175,11 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)  # Compress responses > 1K
 
 @app.get("/")
 async def root_health():
-    return {"status": "healthy", "service": "UDTS Stock Analyzer API", "mongodb": "connected" if MONGODB_AVAILABLE else "unavailable"}
+    return {"status": "healthy", "service": "UDTS Stock Analyzer API", "database": "supabase", "db_status": "connected" if SUPABASE_AVAILABLE else "unavailable"}
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "mongodb": "connected" if MONGODB_AVAILABLE else "unavailable"}
+    return {"status": "healthy", "database": "supabase", "db_status": "connected" if SUPABASE_AVAILABLE else "unavailable"}
 
 app.add_middleware(
     CORSMiddleware,
@@ -2238,6 +2191,4 @@ app.add_middleware(
 
 @app.on_event("shutdown")
 async def shutdown():
-    if mongo_client:
-        mongo_client.close()
-        logger.info("MongoDB connection closed")
+    logger.info("Shutting down server")

@@ -1,0 +1,22 @@
+{
+  "version": 2,
+  "name": "udts-stock-analyzer-frontend",
+  "buildCommand": "cd frontend && npm install && npm run build",
+  "outputDirectory": "frontend/build",
+  "devCommand": "cd frontend && npm start",
+  "installCommand": "cd frontend && npm install",
+  "framework": "create-react-app",
+  "regions": ["iad1"],
+  "env": {
+    "REACT_APP_API_URL": "@react_app_api_url",
+    "VITE_SUPABASE_URL": "@vite_supabase_url",
+    "VITE_SUPABASE_SUPABASE_ANON_KEY": "@vite_supabase_anon_key"
+  },
+  "build": {
+    "env": {
+      "REACT_APP_API_URL": "@react_app_api_url",
+      "VITE_SUPABASE_URL": "@vite_supabase_url",
+      "VITE_SUPABASE_SUPABASE_ANON_KEY": "@vite_supabase_anon_key"
+    }
+  }
+}
